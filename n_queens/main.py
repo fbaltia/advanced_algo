@@ -59,10 +59,8 @@ Optimiser is_safe en utilisant des set() pour suivre en O(1) les colonnes, diago
 au lieu de parcourir board à chaque appel.
 """
 
-
-
 def solve_n_queens(n: int) -> list[list[int]]:
-    number_of_solutions = 0 #décommenter pour la variante count_n_queens(n)
+    #number_of_solutions = 0 #décommenter pour la variante count_n_queens(n)
     solutions = []
     board = [-1] * n  # board[i] = la valeur est la colonne de la reine à la ligne i
 
@@ -79,13 +77,13 @@ def solve_n_queens(n: int) -> list[list[int]]:
         return True
 
     def backtrack(row):
-        nonlocal number_of_solutions
+        #nonlocal number_of_solutions
         """Explore les placements de reines ligne par ligne."""
         # Cas-base : toutes les reines sont bien mises
         if row == n:#décommenter pour la variante count_n_queens(n)
             # Copier l'état courant de l'échiquier et l'ajouter aux solutions
             solutions.append(board.copy())
-            number_of_solutions += 1
+            #number_of_solutions += 1
             return
         # Essayer de placer une reine dans chaque colonne de la ligne actuelle
         for col in range(n):
@@ -99,7 +97,7 @@ def solve_n_queens(n: int) -> list[list[int]]:
 
     # Lancement du backtracking à partir de la ligne 0
     backtrack(0)
-    return solutions, number_of_solutions
+    return solutions #, number_of_solutions
 
 
 def print_board(solutions:list[list[int]]):
@@ -121,6 +119,7 @@ def print_board(solutions:list[list[int]]):
         print("board:",index+1)
         print(output.getvalue())
         print("----")
+
 #TESTS
 
 
@@ -139,7 +138,6 @@ def is_valid_solution(board):
                 return False
     return True
 
-"""
 # Test 1 : n = 1, une seule solution triviale
 print("Test 1...", len(solve_n_queens(1)))
 assert len(solve_n_queens(1)) == 1, "Échec Test 1 : n=1 doit avoir 1 solution"
@@ -156,14 +154,13 @@ assert len(solve_n_queens(3)) == 0, "Échec Test 3 : n=3 ne doit avoir aucune so
 # Test 4 : n = 4, exactement 2 solutions
 print("Test 4...", len(solve_n_queens(4)))
 assert len(solve_n_queens(4)) == 2, "Échec Test 4 : n=4 doit avoir 2 solutions"
-"""
 
 
 # Test 5 : n = 5, exactement 10 solutions
-soluce, number_of_solutions = solve_n_queens(5)
+soluce = solve_n_queens(5)
 print("Test 5...", len(soluce))
 print(soluce)
-print("number of solutions", number_of_solutions)
+#print("number of solutions", number_of_solutions)
 assert len(soluce) == 10, "Échec Test 5 : n=5 doit avoir 10 solutions"
 #print(print_board(soluce))
 
