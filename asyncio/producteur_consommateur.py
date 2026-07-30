@@ -57,7 +57,6 @@ import random
 
 async def producteur(nom: str, queue: asyncio.Queue, nb_commandes: int):
     produits = ["Casque", "Clavier", "Souris", "Écran", "Tapis"]
-
     for i in range(1, nb_commandes + 1):
         await asyncio.sleep(random.uniform(0.1, 1))
         commande = {"id": f"{nom}-{i}", "produit": random.choice(produits)}
