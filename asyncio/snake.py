@@ -131,8 +131,9 @@ async def speed_control(game_state):
         await asyncio.sleep(SNAKE_SPEED_ACCELERATION_INTERVAL)
 
 async def opsie_control(game_state, opsies):
-    while game_state["status"]==GAME_STATUS.RUNNING:
-        opsies[:] = [opsie for opsie in opsies if (datetime.now() - opsie[1]).total_seconds() < OPSIE_LIFE_SPAN_IN_SEC]
+    while game_state["status"] in (GAME_STATUS.WAITING_TO_START, GAME_STATUS.RUNNING):
+        if game_state["status"] == GAME_STATUS.RUNNING:
+            opsies[:] = [opsie for opsie in opsies if (datetime.now() - opsie[1]).total_seconds() < OPSIE_LIFE_SPAN_IN_SEC]
         await asyncio.sleep(max(1,OPSIE_LIFE_SPAN_IN_SEC-1))
 #endregion
 
@@ -202,8 +203,9 @@ async def game_loop(screen: curses.window, width, height, with_obstacles = True,
         screen.addstr(GRID_SHIFT_DOWN + height - 1, 0, f"{GRID_BORDERS.BL.value}{GRID_BORDERS.H.value * (width - 2)}{GRID_BORDERS.BR.value}", curses.color_pair(4))
         
         #serpent
-        for coordinate in snake_body:
-            screen.addstr(GRID_SHIFT_DOWN + coordinate[0], coordinate[1], SNAKE,curses.color_pair(1))
+        for index, coordinate in enumerate(snake_body):
+            color_id = snake_color_ids[index % len(snake_color_ids)]
+            screen.addstr(GRID_SHIFT_DOWN + coordinate[0], coordinate[1], SNAKE,curses.color_pair(color_id))
         screen.addstr(GRID_SHIFT_DOWN + snake_body[-1][0], snake_body[-1][1], game_state["direction"].value[1],curses.color_pair(1))
         #bouffe
         if food_coordinate != None:
@@ -229,6 +231,14 @@ async def game_loop(screen: curses.window, width, height, with_obstacles = True,
     curses.init_pair(3, 94, curses.COLOR_BLACK)
     curses.init_pair(4, curses.COLOR_BLUE, curses.COLOR_BLACK)
 
+    curses.init_pair(11, 196, curses.COLOR_BLACK)
+    curses.init_pair(12, 208, curses.COLOR_BLACK)
+    curses.init_pair(13, 226, curses.COLOR_BLACK)
+    curses.init_pair(14,  28, curses.COLOR_BLACK)
+    curses.init_pair(15,  21, curses.COLOR_BLACK)
+    curses.init_pair(16,  90, curses.COLOR_BLACK)
+    snake_color_ids = [11,12,13,14,15,16]
+
     score = 0
     snake_body = [(1, 1), (1, 2), (1, 3), (1, 4), (1, 5)]
     obstacle_locations = ()
@@ -246,7 +256,7 @@ async def game_loop(screen: curses.window, width, height, with_obstacles = True,
     speed_task = asyncio.create_task(speed_control(game_state))
     opsie_task = asyncio.create_task(opsie_control(game_state, opsies))
     #endregion
-
+ 
 
     draw()
     while game_state["status"] == GAME_STATUS.WAITING_TO_START:
@@ -287,8 +297,9 @@ async def game_loop(screen: curses.window, width, height, with_obstacles = True,
         opsie_task.cancel()
 #endregion    
 
+
 def main(screen):
-    asyncio.run(game_loop(screen, WIDTH, HEIGHT, True, True))
+    asyncio.run(game_loop(screen, WIDTH, HEIGHT, False, True))
 
 # Initialisation propre du terminal via le wrapper
 #curses.wrapper(main)
