@@ -179,7 +179,6 @@ async def game_loop(screen: curses.window, width, height, with_obstacles = True,
             new_head_x = width - 2
         return (new_head_y, new_head_x)
 
-
     def get_obstacle_locations(width, height)->set[tuple]:
         max_number_obstacles = randint(width * height // 30, width * height // 20)
         obstacles = set()
@@ -204,7 +203,7 @@ async def game_loop(screen: curses.window, width, height, with_obstacles = True,
         
         #serpent
         for coordinate in snake_body:
-            screen.addstr(GRID_SHIFT_DOWN + coordinate[0], coordinate[1], SNAKE)
+            screen.addstr(GRID_SHIFT_DOWN + coordinate[0], coordinate[1], SNAKE,curses.color_pair(1))
         screen.addstr(GRID_SHIFT_DOWN + snake_body[-1][0], snake_body[-1][1], game_state["direction"].value[1],curses.color_pair(1))
         #bouffe
         if food_coordinate != None:
