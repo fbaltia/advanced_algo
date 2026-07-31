@@ -59,13 +59,17 @@ Ajouter des obstacles fixes sur la grille.
 Gérer proprement le redimensionnement du terminal en cours de partie.
 Proposer un écran de fin avec le score final et une option "rejouer".
 """
+
+#region imports
 import asyncio
 import curses
 from enum import Enum
 import random
 from random import randint
 from datetime import datetime
+#endregion
 
+#region enums
 class GRID_BORDERS(Enum):
     TL = "╔"
     TR = "╗"
@@ -74,31 +78,40 @@ class GRID_BORDERS(Enum):
     H = "═"
     V = "║"
 
-SNAKE = "X"
-FOOD = "0"
-OBSTACLE = "⬤"
-#OPSIE = "💩"
-OPSIE = "°"
-SNAKE_INITIAL_SPEED = 0.2 # (secs)
-SNAKE_SPEED_INCREMENT = 0.02  # (secs)
-SNAKE_SPEED_ACCELERATION_INTERVAL = 5 # (secs)
-
-WIDTH = 20
-HEIGHT = 10
-
 class DIRECTION(Enum):
     UP = [(-1, 0), "▴"]
     DOWN = [(1, 0), "▾"]
     LEFT = [(0, -1), "◂"]
     RIGHT = [(0, 1), "▸"]
 
+class GAME_STATUS(Enum):
+    WAITING_TO_START = "waiting to start"
+    RUNNING = "running"
+    ABORT = "abort"
+#endregion
 
+#region constants
+SNAKE = "●"
+FOOD = "✫"
+OBSTACLE = "■"
+OPSIE = "♯"
+OPSIE_LIFE_SPAN_IN_SEC = 5.0 # (secs)
+SNAKE_INITIAL_SPEED = 0.2 # (secs)
+SNAKE_SPEED_INCREMENT = 0.02 #0.02  # (secs)
+SNAKE_SPEED_ACCELERATION_INTERVAL = 5.0 # (secs)
+
+WIDTH = 20
+HEIGHT = 20
+#endregion
+
+
+#region asyn functions out of the gameloop
 async def read_keyboard(screen, game_state):
-    while game_state["running"]:
+    while game_state["status"] in (GAME_STATUS.WAITING_TO_START, GAME_STATUS.RUNNING):
         input_key = screen.getch()  # Non-bloquant : screen.nodelay(True)
 
         if input_key == 27:  # Touche Échap (ESC) pour quitter proprement
-            game_state["running"] = False
+            game_state["status"] = GAME_STATUS.ABORT
             break
         elif input_key == curses.KEY_UP and game_state["direction"] != DIRECTION.DOWN:
             game_state["direction"] = DIRECTION.UP
@@ -108,20 +121,31 @@ async def read_keyboard(screen, game_state):
             game_state["direction"] = DIRECTION.LEFT
         elif input_key == curses.KEY_RIGHT and game_state["direction"] != DIRECTION.LEFT:
             game_state["direction"] = DIRECTION.RIGHT
+        if input_key != -1 and game_state["status"] == GAME_STATUS.WAITING_TO_START:
+            game_state["status"] = GAME_STATUS.RUNNING
         await asyncio.sleep(0.02)
 
 async def speed_control(game_state):
-    while game_state["running"]:
+    while game_state["status"]==GAME_STATUS.RUNNING:
         game_state["speed"] = max(0.05, round(game_state["speed"] - SNAKE_SPEED_INCREMENT, 2))
         await asyncio.sleep(SNAKE_SPEED_ACCELERATION_INTERVAL)
-       
+
+async def opsie_control(game_state, opsies):
+    while game_state["status"]==GAME_STATUS.RUNNING:
+        opsies[:] = [opsie for opsie in opsies if (datetime.now() - opsie[1]).total_seconds() < OPSIE_LIFE_SPAN_IN_SEC]
+        await asyncio.sleep(max(1,OPSIE_LIFE_SPAN_IN_SEC-1))
+#endregion
+
+#region gameloop
 async def game_loop(screen: curses.window, width, height, with_obstacles = True, with_opsies = False):
     curses.curs_set(False)
     screen.nodelay(True)
-
-    def game_over():
+    #region internal functions
+    def game_over(message):
+        game_state["status"] = GAME_STATUS.ABORT
         screen.clear()
-        screen.addstr( height // 2, width // 2, "GAME OVER")
+        screen.addstr( height // 2, width // 2, message)
+        screen.addstr( height // 2 + 1, width // 2, "GAME OVER")
         screen.refresh()
 
     def get_random_food_coordinate(snake_body, obstacle_locations):
@@ -133,6 +157,8 @@ async def game_loop(screen: curses.window, width, height, with_obstacles = True,
         free_cells = list(all_cells - snake_body_set)
         if obstacle_locations:
             free_cells = list(all_cells - obstacle_locations)
+        if opsies:
+            free_cells = list(all_cells - set([x[0] for x in opsies]))
         if free_cells:
             return random.choice(free_cells)
         return None
@@ -164,38 +190,46 @@ async def game_loop(screen: curses.window, width, height, with_obstacles = True,
                 obstacles.add((x, y))
             
         return obstacles
+    #endregion
 
-
-    def draw():    #RENDU GRAPHIQUE
+    #region graphical output
+    def draw():   
         GRID_SHIFT_DOWN = 2
         screen.clear()
         #bordures
-        screen.addstr(GRID_SHIFT_DOWN, 0, f"{GRID_BORDERS.TL.value}{GRID_BORDERS.H.value * (width - 2)}{GRID_BORDERS.TR.value}")
+        screen.addstr(GRID_SHIFT_DOWN, 0, f"{GRID_BORDERS.TL.value}{GRID_BORDERS.H.value * (width - 2)}{GRID_BORDERS.TR.value}", curses.color_pair(4))
         for i in range(2, height):
-            screen.addstr(GRID_SHIFT_DOWN + i - 1, 0, f"{GRID_BORDERS.V.value}{'.' * (width - 2)}{GRID_BORDERS.V.value}")
-        screen.addstr(GRID_SHIFT_DOWN + height - 1, 0, f"{GRID_BORDERS.BL.value}{GRID_BORDERS.H.value * (width - 2)}{GRID_BORDERS.BR.value}")
+            screen.addstr(GRID_SHIFT_DOWN + i - 1, 0, f"{GRID_BORDERS.V.value}{'.' * (width - 2)}{GRID_BORDERS.V.value}", curses.color_pair(4))
+        screen.addstr(GRID_SHIFT_DOWN + height - 1, 0, f"{GRID_BORDERS.BL.value}{GRID_BORDERS.H.value * (width - 2)}{GRID_BORDERS.BR.value}", curses.color_pair(4))
         
         #serpent
         for coordinate in snake_body:
             screen.addstr(GRID_SHIFT_DOWN + coordinate[0], coordinate[1], SNAKE)
-        screen.addstr(GRID_SHIFT_DOWN + snake_body[-1][0], snake_body[-1][1], game_state["direction"].value[1])
+        screen.addstr(GRID_SHIFT_DOWN + snake_body[-1][0], snake_body[-1][1], game_state["direction"].value[1],curses.color_pair(1))
         #bouffe
         if food_coordinate != None:
-            screen.addstr(GRID_SHIFT_DOWN+ food_coordinate[0], food_coordinate[1], FOOD)
+            screen.addstr(GRID_SHIFT_DOWN+ food_coordinate[0], food_coordinate[1], FOOD,curses.color_pair(2))
         #obstacles
         for coordinate in obstacle_locations:
-            screen.addstr(GRID_SHIFT_DOWN + coordinate[0], coordinate[1], OBSTACLE)
+            screen.addstr(GRID_SHIFT_DOWN + coordinate[0], coordinate[1], OBSTACLE,curses.color_pair(4))
         #score
         screen.addstr(0, 0, "SCORE:" + str(score))
-        #speed
-        #screen.addstr(1, 0, "SPEED:" + str(game_state["speed"]))
+        #opsies
         if opsies:
             for opsie in opsies:
-                screen.addstr(GRID_SHIFT_DOWN + opsie[0][0], opsie[0][1], OPSIE)
+                screen.addstr(GRID_SHIFT_DOWN + opsie[0][0], opsie[0][1], OPSIE,curses.color_pair(3))
 
         screen.refresh()
-    
-    # État initial du jeu
+    #endregion
+
+
+    #region initialisation
+    curses.start_color()
+    curses.init_pair(1, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+    curses.init_pair(2, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
+    curses.init_pair(3, 94, curses.COLOR_BLACK)
+    curses.init_pair(4, curses.COLOR_BLUE, curses.COLOR_BLACK)
+
     score = 0
     snake_body = [(1, 1), (1, 2), (1, 3), (1, 4), (1, 5)]
     obstacle_locations = ()
@@ -206,51 +240,56 @@ async def game_loop(screen: curses.window, width, height, with_obstacles = True,
     food_coordinate = get_random_food_coordinate(snake_body, obstacle_locations)
     game_state = {
         "direction": DIRECTION.RIGHT,
-        "running": True,
+        "status": GAME_STATUS.WAITING_TO_START,
         "speed": SNAKE_INITIAL_SPEED
     }
     keyboard_task = asyncio.create_task(read_keyboard(screen, game_state))
     speed_task = asyncio.create_task(speed_control(game_state))
+    opsie_task = asyncio.create_task(opsie_control(game_state, opsies))
+    #endregion
 
-    while game_state["running"]:
+
+    draw()
+    while game_state["status"] == GAME_STATUS.WAITING_TO_START:
+        await asyncio.sleep(0.2)
+
+    while game_state["status"] == GAME_STATUS.RUNNING:
         new_head = get_new_coordinates_according_to_direction(snake_body[-1],game_state["direction"].value[0])
         if new_head != food_coordinate:
             snake_body.pop(0)
         else:
             score +=1
             if with_opsies:
-                match game_state["direction"]:
-                    case DIRECTION.UP:
-                        opsies_direction = DIRECTION.DOWN
-                    case DIRECTION.DOWN:
-                        opsies_direction = DIRECTION.UP
-                    case DIRECTION.LEFT:
-                        opsies_direction = DIRECTION.RIGHT
-                    case DIRECTION.RIGHT:
-                        opsies_direction = DIRECTION.LEFT
-                opsies_coord = get_new_coordinates_according_to_direction(snake_body[0], opsies_direction.value[0])
+                x,y = -1 *(snake_body[0][0] - snake_body[1][0]), -1 * (snake_body[0][1] - snake_body[1][1])
+                opsies_coord = get_new_coordinates_according_to_direction(snake_body[0], (x,y))
                 opsies.append([opsies_coord, datetime.now()])
 
             food_coordinate = get_random_food_coordinate(snake_body, obstacle_locations)
             if not food_coordinate:
-                game_over()
+                game_over("GRATZ !!!")
                 await asyncio.sleep(2.0) 
-                game_state["running"] = False
+                game_state["status"] = GAME_STATUS.ABORT
         if new_head in snake_body or new_head in obstacle_locations:
-            game_over()
+            game_over("BANG !!!!")
             await asyncio.sleep(2.0) 
-            game_state["running"] = False
+            game_state["status"] = GAME_STATUS.ABORT
+        if new_head in [opsie[0] for opsie in opsies]:
+            game_over("EWWWW !!!")
+            await asyncio.sleep(2.0) 
+            game_state["status"] = GAME_STATUS.ABORT
+
         snake_body.append(new_head)
 
         draw()
         await asyncio.sleep(game_state["speed"])
     keyboard_task.cancel()
     speed_task.cancel()
-
-    
+    if with_opsies:
+        opsie_task.cancel()
+#endregion    
 
 def main(screen):
-    asyncio.run(game_loop(screen, WIDTH, HEIGHT, False, True))
+    asyncio.run(game_loop(screen, WIDTH, HEIGHT, True, True))
 
 # Initialisation propre du terminal via le wrapper
 #curses.wrapper(main)
