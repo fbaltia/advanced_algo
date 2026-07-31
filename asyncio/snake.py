@@ -62,6 +62,7 @@ Proposer un écran de fin avec le score final et une option "rejouer".
 import asyncio
 import curses
 from enum import Enum
+import random
 from random import randint
 
 
@@ -75,8 +76,11 @@ class GRID_BORDERS(Enum):
 
 SNAKE = "X"
 FOOD = "0"
+OBSTACLE = "⬤"
+SNAKE_INITIAL_SPEED = 0.2
+
 WIDTH = 20
-HEIGHT = 20
+HEIGHT = 10
 
 
 class Direction(Enum):
@@ -85,61 +89,131 @@ class Direction(Enum):
     LEFT = (0, -1)
     RIGHT = (0, 1)
 
+async def read_keyboard(screen, game_state):
+    while game_state["running"]:
+        input_key = screen.getch()  # Non-bloquant : screen.nodelay(True)
+
+        if input_key == 27:  # Touche Échap (ESC) pour quitter proprement
+            game_state["running"] = False
+            break
+        elif input_key == curses.KEY_UP and game_state["direction"] != Direction.DOWN:
+            game_state["direction"] = Direction.UP
+        elif input_key == curses.KEY_DOWN and game_state["direction"] != Direction.UP:
+            game_state["direction"] = Direction.DOWN
+        elif input_key == curses.KEY_LEFT and game_state["direction"] != Direction.RIGHT:
+            game_state["direction"] = Direction.LEFT
+        elif input_key == curses.KEY_RIGHT and game_state["direction"] != Direction.LEFT:
+            game_state["direction"] = Direction.RIGHT
+        await asyncio.sleep(0.02)
+
 async def game_loop(screen: curses.window, width, height):
-    # Initialisation de curses pour l'affichage numérique
     curses.curs_set(False)
+    screen.nodelay(True)
 
-    def get_random_food_coordinate(snake_body):
-            food_coordinate = (1, randint(1, width - 2))
-            while food_coordinate in snake_body:
-                food_coordinate = (1, randint(1, width - 2))
-            return food_coordinate
-    
-    
-    # État initial du jeu
-    snake_body = [(1, 1), (1, 2), (1, 3), (1, 4), (1, 5)]
-    current_direction = Direction.RIGHT  # Direction initiale 
-    
-    food_coordinate = get_random_food_coordinate(snake_body)
-    
-    # Boucle de jeu asynchrone
-    while True:
-        head_y, head_x = snake_body[-1]
-        move_y, move_x = current_direction.value
+    def game_over():
+        screen.clear()
+        screen.addstr( width // 2, height // 2, "GAME OVER")
+        screen.refresh()
+
+    def get_random_food_coordinate(snake_body, obstacle_locations):
+        all_cells = {
+            (y, x) for x in range(1,width-1) for y in range(1,height-1)
+        }
+        snake_body_set = set(snake_body)
         
-        # nouvelle position de la tête avec gestion des bords
-        new_head_y = head_y + move_y    if head_y < height-2   else 1
-        new_head_x = head_x + move_x    if head_x < width-2    else 1
-        new_head = (new_head_y, new_head_x)
+        free_cells = list(all_cells - snake_body_set)
+        free_cells = list(all_cells - obstacle_locations)
+        if free_cells:
+            return random.choice(free_cells)
+        return None
 
-        snake_body.append(new_head)
-        if new_head != food_coordinate:
-            snake_body.pop(0)
-        else:
-            food_coordinate = get_random_food_coordinate(snake_body)
+    def get_obstacle_locations(width, height)->set[tuple]:
+        max_number_obstacles = randint(width * height // 30, width * height // 20)
+        obstacles = set()
+        while len(obstacles) < max_number_obstacles:
+            x = random.randint(1, height - 2)
+            y = random.randint(1, width - 2)
+            if (x,y) not in snake_body:
+                obstacles.add((x, y))
+            
+        return obstacles
 
-        #RENDU GRAPHIQUE
+
+    def draw():    #RENDU GRAPHIQUE
+        GRID_SHIFT_DOWN = 1
         screen.clear()
         #bordures
-        screen.addstr(0, 0, f"{GRID_BORDERS.TL.value}{GRID_BORDERS.H.value * (width - 2)}{GRID_BORDERS.TR.value}")
+        screen.addstr(GRID_SHIFT_DOWN, 0, f"{GRID_BORDERS.TL.value}{GRID_BORDERS.H.value * (width - 2)}{GRID_BORDERS.TR.value}")
         for i in range(2, height):
-            screen.addstr(i - 1, 0, f"{GRID_BORDERS.V.value}{'.' * (width - 2)}{GRID_BORDERS.V.value}")
-        screen.addstr(height - 1, 0, f"{GRID_BORDERS.BL.value}{GRID_BORDERS.H.value * (width - 2)}{GRID_BORDERS.BR.value}")
+            screen.addstr(GRID_SHIFT_DOWN + i - 1, 0, f"{GRID_BORDERS.V.value}{'.' * (width - 2)}{GRID_BORDERS.V.value}")
+        screen.addstr(GRID_SHIFT_DOWN + height - 1, 0, f"{GRID_BORDERS.BL.value}{GRID_BORDERS.H.value * (width - 2)}{GRID_BORDERS.BR.value}")
         
         #serpent
         for coordinate in snake_body:
-            screen.addstr(coordinate[0], coordinate[1], SNAKE)
-            
+            screen.addstr(GRID_SHIFT_DOWN + coordinate[0], coordinate[1], SNAKE)
         #bouffe
-        screen.addstr(food_coordinate[0], food_coordinate[1], FOOD)
-        screen.refresh()
+        if food_coordinate != None:
+            screen.addstr(GRID_SHIFT_DOWN+ food_coordinate[0], food_coordinate[1], FOOD)
+        #obstacles
+        for coordinate in obstacle_locations:
+            screen.addstr(GRID_SHIFT_DOWN + coordinate[0], coordinate[1], OBSTACLE)
+        #score
+        screen.addstr(0, 0, "SCORE:" + str(score))
 
-        # 3. Pause asynchrone de 200 ms (ne bloque pas le thread)
-        await asyncio.sleep(0.2)
+        screen.refresh()
+    
+    # État initial du jeu
+    score = 0
+    snake_body = [(1, 1), (1, 2), (1, 3), (1, 4), (1, 5)]
+    obstacle_locations = get_obstacle_locations(width, height)
+    food_coordinate = get_random_food_coordinate(snake_body, obstacle_locations)
+    game_state = {
+        "direction": Direction.RIGHT,
+        "running": True
+    }
+    keyboard_task = asyncio.create_task(read_keyboard(screen, game_state))
+    
+
+    while game_state["running"]:
+        head_y, head_x = snake_body[-1]
+        move_y, move_x = game_state["direction"].value
+        new_head_y = head_y + move_y
+        if new_head_y >= height - 1: 
+            new_head_y = 1
+        elif new_head_y <= 0: 
+            new_head_y = height - 2
+
+        new_head_x = head_x + move_x
+        if new_head_x >= width - 1: 
+            new_head_x = 1
+        elif new_head_x <= 0: 
+            new_head_x = width - 2
+
+        new_head = (new_head_y, new_head_x)
+
+        if new_head != food_coordinate:
+            snake_body.pop(0)
+        else:
+            score +=1
+            food_coordinate = get_random_food_coordinate(snake_body, obstacle_locations)
+            if not food_coordinate:
+                game_over()
+                await asyncio.sleep(2.0) 
+                game_state["running"] = False
+        if new_head in snake_body or new_head in obstacle_locations:
+            game_over()
+            await asyncio.sleep(2.0) 
+            game_state["running"] = False
+        snake_body.append(new_head)
+
+        draw()
+        await asyncio.sleep(SNAKE_INITIAL_SPEED)
+    keyboard_task.cancel()
 
 def main(screen):
-    # Lance la boucle d'événements asyncio à l'intérieur du wrapper curses
     asyncio.run(game_loop(screen, WIDTH, HEIGHT))
 
 # Initialisation propre du terminal via le wrapper
-curses.wrapper(main)
+#curses.wrapper(main)
+if __name__ == "__main__":
+    curses.wrapper(main)
