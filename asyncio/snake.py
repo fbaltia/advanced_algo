@@ -141,6 +141,7 @@ async def opsie_control(game_state, opsies):
 async def game_loop(screen: curses.window, width, height, with_obstacles = True, with_opsies = False):
     curses.curs_set(False)
     screen.nodelay(True)
+    
     #region internal functions
     def game_over(message):
         game_state["status"] = GAME_STATUS.ABORT
