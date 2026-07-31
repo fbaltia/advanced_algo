@@ -64,7 +64,7 @@ import curses
 from enum import Enum
 import random
 from random import randint
-
+from datetime import datetime
 
 class GRID_BORDERS(Enum):
     TL = "╔"
@@ -77,17 +77,21 @@ class GRID_BORDERS(Enum):
 SNAKE = "X"
 FOOD = "0"
 OBSTACLE = "⬤"
-SNAKE_INITIAL_SPEED = 0.2
+#OPSIE = "💩"
+OPSIE = "°"
+SNAKE_INITIAL_SPEED = 0.2 # (secs)
+SNAKE_SPEED_INCREMENT = 0.02  # (secs)
+SNAKE_SPEED_ACCELERATION_INTERVAL = 5 # (secs)
 
 WIDTH = 20
 HEIGHT = 10
 
+class DIRECTION(Enum):
+    UP = [(-1, 0), "▴"]
+    DOWN = [(1, 0), "▾"]
+    LEFT = [(0, -1), "◂"]
+    RIGHT = [(0, 1), "▸"]
 
-class Direction(Enum):
-    UP = (-1, 0)
-    DOWN = (1, 0)
-    LEFT = (0, -1)
-    RIGHT = (0, 1)
 
 async def read_keyboard(screen, game_state):
     while game_state["running"]:
@@ -96,23 +100,28 @@ async def read_keyboard(screen, game_state):
         if input_key == 27:  # Touche Échap (ESC) pour quitter proprement
             game_state["running"] = False
             break
-        elif input_key == curses.KEY_UP and game_state["direction"] != Direction.DOWN:
-            game_state["direction"] = Direction.UP
-        elif input_key == curses.KEY_DOWN and game_state["direction"] != Direction.UP:
-            game_state["direction"] = Direction.DOWN
-        elif input_key == curses.KEY_LEFT and game_state["direction"] != Direction.RIGHT:
-            game_state["direction"] = Direction.LEFT
-        elif input_key == curses.KEY_RIGHT and game_state["direction"] != Direction.LEFT:
-            game_state["direction"] = Direction.RIGHT
+        elif input_key == curses.KEY_UP and game_state["direction"] != DIRECTION.DOWN:
+            game_state["direction"] = DIRECTION.UP
+        elif input_key == curses.KEY_DOWN and game_state["direction"] != DIRECTION.UP:
+            game_state["direction"] = DIRECTION.DOWN
+        elif input_key == curses.KEY_LEFT and game_state["direction"] != DIRECTION.RIGHT:
+            game_state["direction"] = DIRECTION.LEFT
+        elif input_key == curses.KEY_RIGHT and game_state["direction"] != DIRECTION.LEFT:
+            game_state["direction"] = DIRECTION.RIGHT
         await asyncio.sleep(0.02)
 
-async def game_loop(screen: curses.window, width, height):
+async def speed_control(game_state):
+    while game_state["running"]:
+        game_state["speed"] = max(0.05, round(game_state["speed"] - SNAKE_SPEED_INCREMENT, 2))
+        await asyncio.sleep(SNAKE_SPEED_ACCELERATION_INTERVAL)
+       
+async def game_loop(screen: curses.window, width, height, with_obstacles = True, with_opsies = False):
     curses.curs_set(False)
     screen.nodelay(True)
 
     def game_over():
         screen.clear()
-        screen.addstr( width // 2, height // 2, "GAME OVER")
+        screen.addstr( height // 2, width // 2, "GAME OVER")
         screen.refresh()
 
     def get_random_food_coordinate(snake_body, obstacle_locations):
@@ -122,10 +131,28 @@ async def game_loop(screen: curses.window, width, height):
         snake_body_set = set(snake_body)
         
         free_cells = list(all_cells - snake_body_set)
-        free_cells = list(all_cells - obstacle_locations)
+        if obstacle_locations:
+            free_cells = list(all_cells - obstacle_locations)
         if free_cells:
             return random.choice(free_cells)
         return None
+    
+    def get_new_coordinates_according_to_direction(coordinate, direction):
+        head_y, head_x = coordinate
+        move_y, move_x = direction
+        new_head_y = head_y + move_y
+        if new_head_y >= height - 1: 
+            new_head_y = 1
+        elif new_head_y <= 0: 
+            new_head_y = height - 2
+
+        new_head_x = head_x + move_x
+        if new_head_x >= width - 1: 
+            new_head_x = 1
+        elif new_head_x <= 0: 
+            new_head_x = width - 2
+        return (new_head_y, new_head_x)
+
 
     def get_obstacle_locations(width, height)->set[tuple]:
         max_number_obstacles = randint(width * height // 30, width * height // 20)
@@ -140,7 +167,7 @@ async def game_loop(screen: curses.window, width, height):
 
 
     def draw():    #RENDU GRAPHIQUE
-        GRID_SHIFT_DOWN = 1
+        GRID_SHIFT_DOWN = 2
         screen.clear()
         #bordures
         screen.addstr(GRID_SHIFT_DOWN, 0, f"{GRID_BORDERS.TL.value}{GRID_BORDERS.H.value * (width - 2)}{GRID_BORDERS.TR.value}")
@@ -151,6 +178,7 @@ async def game_loop(screen: curses.window, width, height):
         #serpent
         for coordinate in snake_body:
             screen.addstr(GRID_SHIFT_DOWN + coordinate[0], coordinate[1], SNAKE)
+        screen.addstr(GRID_SHIFT_DOWN + snake_body[-1][0], snake_body[-1][1], game_state["direction"].value[1])
         #bouffe
         if food_coordinate != None:
             screen.addstr(GRID_SHIFT_DOWN+ food_coordinate[0], food_coordinate[1], FOOD)
@@ -159,42 +187,50 @@ async def game_loop(screen: curses.window, width, height):
             screen.addstr(GRID_SHIFT_DOWN + coordinate[0], coordinate[1], OBSTACLE)
         #score
         screen.addstr(0, 0, "SCORE:" + str(score))
+        #speed
+        #screen.addstr(1, 0, "SPEED:" + str(game_state["speed"]))
+        if opsies:
+            for opsie in opsies:
+                screen.addstr(GRID_SHIFT_DOWN + opsie[0][0], opsie[0][1], OPSIE)
 
         screen.refresh()
     
     # État initial du jeu
     score = 0
     snake_body = [(1, 1), (1, 2), (1, 3), (1, 4), (1, 5)]
-    obstacle_locations = get_obstacle_locations(width, height)
+    obstacle_locations = ()
+    opsies = []
+
+    if with_obstacles: 
+        obstacle_locations = get_obstacle_locations(width, height)
     food_coordinate = get_random_food_coordinate(snake_body, obstacle_locations)
     game_state = {
-        "direction": Direction.RIGHT,
-        "running": True
+        "direction": DIRECTION.RIGHT,
+        "running": True,
+        "speed": SNAKE_INITIAL_SPEED
     }
     keyboard_task = asyncio.create_task(read_keyboard(screen, game_state))
-    
+    speed_task = asyncio.create_task(speed_control(game_state))
 
     while game_state["running"]:
-        head_y, head_x = snake_body[-1]
-        move_y, move_x = game_state["direction"].value
-        new_head_y = head_y + move_y
-        if new_head_y >= height - 1: 
-            new_head_y = 1
-        elif new_head_y <= 0: 
-            new_head_y = height - 2
-
-        new_head_x = head_x + move_x
-        if new_head_x >= width - 1: 
-            new_head_x = 1
-        elif new_head_x <= 0: 
-            new_head_x = width - 2
-
-        new_head = (new_head_y, new_head_x)
-
+        new_head = get_new_coordinates_according_to_direction(snake_body[-1],game_state["direction"].value[0])
         if new_head != food_coordinate:
             snake_body.pop(0)
         else:
             score +=1
+            if with_opsies:
+                match game_state["direction"]:
+                    case DIRECTION.UP:
+                        opsies_direction = DIRECTION.DOWN
+                    case DIRECTION.DOWN:
+                        opsies_direction = DIRECTION.UP
+                    case DIRECTION.LEFT:
+                        opsies_direction = DIRECTION.RIGHT
+                    case DIRECTION.RIGHT:
+                        opsies_direction = DIRECTION.LEFT
+                opsies_coord = get_new_coordinates_according_to_direction(snake_body[0], opsies_direction.value[0])
+                opsies.append([opsies_coord, datetime.now()])
+
             food_coordinate = get_random_food_coordinate(snake_body, obstacle_locations)
             if not food_coordinate:
                 game_over()
@@ -207,11 +243,14 @@ async def game_loop(screen: curses.window, width, height):
         snake_body.append(new_head)
 
         draw()
-        await asyncio.sleep(SNAKE_INITIAL_SPEED)
+        await asyncio.sleep(game_state["speed"])
     keyboard_task.cancel()
+    speed_task.cancel()
+
+    
 
 def main(screen):
-    asyncio.run(game_loop(screen, WIDTH, HEIGHT))
+    asyncio.run(game_loop(screen, WIDTH, HEIGHT, False, True))
 
 # Initialisation propre du terminal via le wrapper
 #curses.wrapper(main)
