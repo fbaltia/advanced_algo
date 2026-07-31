@@ -96,12 +96,12 @@ FOOD = "✫"
 OBSTACLE = "■"
 OPSIE = "♯"
 OPSIE_LIFE_SPAN_IN_SEC = 5.0 # (secs)
-SNAKE_INITIAL_SPEED = 0.2 # (secs)
-SNAKE_SPEED_INCREMENT = 0.02 #0.02  # (secs)
+SNAKE_INITIAL_SPEED = 0.4 # (secs)
+SNAKE_SPEED_INCREMENT = 0.0 #0.02  # (secs)
 SNAKE_SPEED_ACCELERATION_INTERVAL = 5.0 # (secs)
 
-WIDTH = 20
-HEIGHT = 20
+WIDTH = 16
+HEIGHT = 16
 #endregion
 
 
@@ -150,18 +150,18 @@ async def game_loop(screen: curses.window, width, height, with_obstacles = True,
         screen.refresh()
 
     def get_random_food_coordinate(snake_body, obstacle_locations):
-        all_cells = {
+        cells = {
             (y, x) for x in range(1,width-1) for y in range(1,height-1)
         }
         snake_body_set = set(snake_body)
         
-        free_cells = list(all_cells - snake_body_set)
+        cells = cells - snake_body_set
         if obstacle_locations:
-            free_cells = list(all_cells - obstacle_locations)
+            cells = cells - obstacle_locations
         if opsies:
-            free_cells = list(all_cells - set([x[0] for x in opsies]))
-        if free_cells:
-            return random.choice(free_cells)
+            cells = cells - set([x[0] for x in opsies])
+        if cells:
+            return random.choice(list(cells))
         return None
     
     def get_new_coordinates_according_to_direction(coordinate, direction):
@@ -206,7 +206,8 @@ async def game_loop(screen: curses.window, width, height, with_obstacles = True,
         for index, coordinate in enumerate(snake_body):
             color_id = snake_color_ids[index % len(snake_color_ids)]
             screen.addstr(GRID_SHIFT_DOWN + coordinate[0], coordinate[1], SNAKE,curses.color_pair(color_id))
-        screen.addstr(GRID_SHIFT_DOWN + snake_body[-1][0], snake_body[-1][1], game_state["direction"].value[1],curses.color_pair(1))
+        color_id = random.choice(snake_color_ids)
+        screen.addstr(GRID_SHIFT_DOWN + snake_body[-1][0], snake_body[-1][1], game_state["direction"].value[1],curses.color_pair(color_id))
         #bouffe
         if food_coordinate != None:
             screen.addstr(GRID_SHIFT_DOWN+ food_coordinate[0], food_coordinate[1], FOOD,curses.color_pair(2))
@@ -223,7 +224,6 @@ async def game_loop(screen: curses.window, width, height, with_obstacles = True,
         screen.refresh()
     #endregion
 
-
     #region initialisation
     curses.start_color()
     curses.init_pair(1, curses.COLOR_YELLOW, curses.COLOR_BLACK)
@@ -237,8 +237,8 @@ async def game_loop(screen: curses.window, width, height, with_obstacles = True,
     curses.init_pair(14,  28, curses.COLOR_BLACK)
     curses.init_pair(15,  21, curses.COLOR_BLACK)
     curses.init_pair(16,  90, curses.COLOR_BLACK)
-    snake_color_ids = [11,12,13,14,15,16]
 
+    snake_color_ids = [11,12,13,14,15,16]
     score = 0
     snake_body = [(1, 1), (1, 2), (1, 3), (1, 4), (1, 5)]
     obstacle_locations = ()
@@ -256,7 +256,6 @@ async def game_loop(screen: curses.window, width, height, with_obstacles = True,
     speed_task = asyncio.create_task(speed_control(game_state))
     opsie_task = asyncio.create_task(opsie_control(game_state, opsies))
     #endregion
- 
 
     draw()
     while game_state["status"] == GAME_STATUS.WAITING_TO_START:
@@ -297,11 +296,8 @@ async def game_loop(screen: curses.window, width, height, with_obstacles = True,
         opsie_task.cancel()
 #endregion    
 
-
 def main(screen):
-    asyncio.run(game_loop(screen, WIDTH, HEIGHT, False, True))
+    asyncio.run(game_loop(screen, WIDTH, HEIGHT, True, True))
 
-# Initialisation propre du terminal via le wrapper
-#curses.wrapper(main)
 if __name__ == "__main__":
     curses.wrapper(main)
