@@ -3,7 +3,7 @@
 
 import curses
 
-
+ #dfgdfgdf 
 
 def main(screen: curses.window):
     SIZE = 6
