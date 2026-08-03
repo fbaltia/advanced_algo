@@ -7,7 +7,6 @@ import curses
 
 def main(screen: curses.window):
     SIZE = 6
-
     def print_area():
         screen.addstr(0,0, "Bonjour à tous!")
         screen.addstr(1,0, f"{'1'* SIZE}")
