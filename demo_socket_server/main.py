@@ -1,35 +1,37 @@
 import socketio
 import uvicorn
-import datetime
 
 sio = socketio.AsyncServer(async_mode='asgi')
 app = socketio.ASGIApp(sio)
 
 clients = {}
-tokens = {}
-token_def = ["⬤","✖"]
-
-
 
 @sio.event
 async def connect(sid, environ, auth):
-    tokens[sid] = token_def[0] if not clients else token_def[1]
-    clients[sid] = auth.get('username')
-    print(f'{datetime.datetime.now()} - {auth.get('username')} s\'est connecté, jeton : {tokens[sid]}')
-    await sio.emit('ON_CONNECT', {
-            'username': clients.get(sid),
-            'token': tokens.get(sid),
-            'tokens': token_def
-        })
+    if clients == {}: 
+        clients[sid] = auth.get('username')
+        await sio.emit('ON_MESSAGE', {
+                'username': clients.get(sid),
+                'message': "R"
+            }, to=sid)
+        print(f"{clients.get(sid)} s'est connecté et a reçu la couleur R")
+    else:
+        clients[sid] = auth.get('username')
+        await sio.emit('ON_MESSAGE', {
+                'username': clients.get(sid),
+                'message': "J"
+            }, to=sid)
+        print(f"{clients.get(sid)} s'est connecté et a reçu la couleur J")
+    
 
 @sio.event
-def disconnect(sid):
+async def disconnect(sid):
     print(f'{clients.get(sid)} s\'est déco')
     clients.pop(sid)
 
 @sio.on('NEW_MESSAGE')
 async def new_message(sid, message: str):
-    print(clients[sid], message)
+    print(f"Message reçu de {clients.get(sid)}: {message}")
     await sio.emit('ON_MESSAGE', {
         'username': clients.get(sid),
         'message': message
