@@ -2,6 +2,16 @@ import curses
 import socketio
 import asyncio
 import curses.textpad
+from enum import Enum
+
+
+class GRID_BORDERS(Enum):
+    TL = "╔"
+    TR = "╗"
+    BL = "╚"
+    BR = "╝"
+    H = "═"
+    V = "║"
 
 log = []
 game_over = False
@@ -18,14 +28,18 @@ messages = []
 connected = True
 msg_win=None
 input_win=None
-
+is_my_turn = None
 
 def message_received(message):
     global colour
-    if message['message'] in {"1", "2", "3", "4", "5", "6", "7"} and not game_over:
-        play(int(message['message']))
     if message['message'] in colours:
         colour = message['message']
+        print_grid(colour)
+        print_prompt(colour)
+
+    if message['message'] in {"1", "2", "3", "4", "5", "6", "7"} and not game_over:
+        play(int(message['message']))
+
 
 def check_winner(a_colour, a_column, a_row):
     if grid[a_row][a_column] != a_colour:
@@ -54,8 +68,11 @@ def check_winner(a_colour, a_column, a_row):
 
 def print_grid(a_colour):
     msg_win.clear()
+    msg_win.addstr(f"{GRID_BORDERS.TL.value}{GRID_BORDERS.H.value * (NUMBER_OF_COLUMNS*4 -1)}{GRID_BORDERS.TR.value}" + "\n")
     for row in grid:
-        msg_win.addstr(" | ".join(row) + "\n")
+        msg_win.addstr(GRID_BORDERS.V.value + " " + " | ".join(row) + " " + GRID_BORDERS.V.value + "\n")
+    msg_win.addstr(f"{GRID_BORDERS.BL.value}{GRID_BORDERS.H.value * (NUMBER_OF_COLUMNS*4 -1)}{GRID_BORDERS.BR.value}" + "\n")
+            
     msg_win.refresh()
     input_win.clear()
 
@@ -96,15 +113,16 @@ def play(column):
 async def listen_input():
     while connected:
         await asyncio.sleep(0.05)
-        input_win.nodelay(True)
-        key = input_win.getch()
-        box = curses.textpad.Textbox(input_win)
+        if is_my_turn:
+            input_win.nodelay(True)
+            key = input_win.getch()
+            box = curses.textpad.Textbox(input_win)
 
-        box.edit()
-        message = box.gather()[-2].strip()
-        await socket_client.emit('NEW_MESSAGE', message)
-        input_win.clear()
-        input_win.refresh()
+            box.edit()
+            message = box.gather()[-2].strip()
+            await socket_client.emit('NEW_MESSAGE', message)
+            input_win.clear()
+            input_win.refresh()
 
 async def get_username():
     input_win.clear()
